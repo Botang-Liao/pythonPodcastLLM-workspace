@@ -1,0 +1,23 @@
+#!/bin/bash
+
+cat <<EOF
+
+    Welcome to use the python docker workspace.
+
+    Please clone all your repositories into '~/projects/' to keep them after the container closed.
+    Use \`docker exec -it ${HOSTNAME} bash\` to connect to the container.
+
+    The following are some useful commands for this environment.
+
+    [ Container ]
+        startup     : Show this message.
+        exit        : Leave the container.
+
+    [ Python virtual environment ]
+        virtualenv venv             : Create a Python virtual environment in the current directory.
+        source venv/bin/activate    : Activate a Python virtual environment.
+        pip3 install -r <FILE>      : Install Python packages with a specified file. Only use it when venv is activated.
+        pip3 list                   : Show installed Python packages in the current configuration.
+        deactivate                  : Leave the current Python virtual environment.
+
+EOF
