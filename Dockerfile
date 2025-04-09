@@ -27,7 +27,7 @@ ENV LLM_TOOL_PACKAGES ffmpeg \
 cargo
 
 
-ENV USER ${NAME}ß
+ENV USER ${NAME}
 ENV TERM xterm-256color
 
 # install system packages
