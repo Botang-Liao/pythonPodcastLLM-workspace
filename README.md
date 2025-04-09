@@ -1,5 +1,7 @@
 # python Podcast LLM Docker Workspace
 Docker development environment for the flask projects based on Ubuntu 20.04.
+- Look at [Developer Guide](docs/DeveloperGuide.md) for more details about how to start developing this repository.
+- Refer to [Contributing Guidelines](docs/CONTRIBUTING.md) for the conventions and rules that contributors should follow.
 
 ## Table of Contents <!-- omit in toc -->
 - [python Podcast LLM Docker Workspace](#python-podcast-llm-docker-workspace)
