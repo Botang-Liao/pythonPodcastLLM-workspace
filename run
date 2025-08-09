@@ -1,144 +1,75 @@
 #!/bin/bash
 
-# 一旦任何命令返回非零的退出狀態（錯誤），腳本就會立即終止執行。
 set -e
 
-# 切換到 script 所在目錄  
 cd "$(dirname "$0")"
 
-# 設定 image name 、 container name 和 user name
 IMAGE_NAME="python_podcast_llm_environment"
 CONTAINER_NAME="PodcastLLMEnv"
 NAME="$(id -un)"
-
-# 其中 user name 部分需要將 NAME 變量中的所有空格字符替換成空字符串
 NAME=${NAME// /}
 
-# 設定一個變量 VOLUME_PROJECTS_DIR，它包含本機一個目錄路徑，該目錄將被映射到 Docker 容器中，用於存放項目文件。
+# volumes
 VOLUME_PROJECTS_DIR="${PWD}/projects/"
-
-# 設定一個變量 VOLUME_VSCODESERVER_DIR，它包含本機上一個目錄路徑，該目錄將被映射到 Docker 容器中，用於存放 VS Code Server 相關的文件。
 VOLUME_VSCODESERVER_DIR="${PWD}/temp/.vscode-server/"
 
-# 設定一個變量 REPO_DIR，它包含本機上一個目錄路徑，用於存放 PodcastLLM 的程式碼。
+# repo to clone if missing
 REPO_DIR="${VOLUME_PROJECTS_DIR}/PodcastLLM"
+REPO_URL="https://github.com/Botang-Liao/PodcastLLM.git"
 
-# 設定提示文字描述
+# SSH port mapping (host:container)
+SSH_PORT="${SSH_PORT:-2222}"
+
 usage_message() {
-    # 使用 cat 命令連續顯示後續的多行文本，其中 <<EOF 表示後面的文本是一個多行輸入，直到遇到新的 EOF 才結束。
-    
-    cat <<EOF
+  cat <<EOF
 
-    This script will help you manage the docker workspace of the ITH project.
-    You can execute this script with the following options.
+    This script manages the docker workspace of the ITH project.
 
     --start     : build and enter the workspace
-    --stop      : stop and exit the workspace
+    --stop      : stop and remove the workspace container
     --prune     : remove the docker image
-    --rebuild   : remove and build a new image to apply new changes
+    --rebuild   : remove image & container, then build and start
+
+    Env:
+      SSH_PORT   Host port to map to container's 22 (default: 2222)
 
 EOF
 }
 
-# 檢查 GPU 支援
 has_gpu() {
-    docker info 2>/dev/null | grep -q "Runtimes:.*nvidia"
+  # Detect NVIDIA runtime availability for Docker
+  docker info 2>/dev/null | grep -qE 'Runtimes:.*nvidia|nvidia-container-runtime' || \
+  docker info 2>/dev/null | grep -q 'Default Runtime: nvidia'
 }
-
 
 start_environment() {
-   
-    # 檢查主機系統上的 ${VOLUME_PROJECTS_DIR} 目錄是否存在。如果不存在，則使用 mkdir -p 創建該目錄及其父目錄。
-    [[ -d ${VOLUME_PROJECTS_DIR} ]] || mkdir -p "${VOLUME_PROJECTS_DIR}"
-    
-    # 此行檢查主機系統上的 ${VOLUME_VSCODESERVER_DIR} 目錄是否存在。如果不存在，則使用 mkdir -p 創建該目錄及其父目錄。
-    [[ -d ${VOLUME_VSCODESERVER_DIR} ]] || mkdir -p "${VOLUME_VSCODESERVER_DIR}"
-    
-    # 此行檢查主機系統上的  ${REPO_DIR} 目錄是否存在。如果不存在，則使用 git clone 命令從 GitHub 上抓取 PodcastLLM 的程式碼庫到 ${REPO_DIR} 目錄中。
-    if [[ ! -d "${REPO_DIR}" ]]; then
-        git clone https://github.com/Botang-Liao/PodcastLLM.git "${REPO_DIR}" ||
-        { echo "error: failed to clone PodcastLLM repo" && exit 1; }
+  [[ -d "${VOLUME_PROJECTS_DIR}" ]] || mkdir -p "${VOLUME_PROJECTS_DIR}"
+  [[ -d "${VOLUME_VSCODESERVER_DIR}" ]] || mkdir -p "${VOLUME_VSCODESERVER_DIR}"
+
+  if [[ ! -d "${REPO_DIR}" ]]; then
+    git clone "${REPO_URL}" "${REPO_DIR}" || { echo "error: failed to clone PodcastLLM repo" && exit 1; }
+  fi
+
+  if [[ -z "$(docker images -q ${IMAGE_NAME})" ]]; then
+    docker build \
+      --build-arg UID="$(id -u)" \
+      --build-arg GID="$(id -g)" \
+      --build-arg NAME="${NAME}" \
+      -t "${IMAGE_NAME}" . || { echo "error due to docker build image" && exit 1; }
+  fi
+
+  # If container exists but is stopped, start it
+  if docker ps -a --format '{{.Names}}' | grep -qx "${CONTAINER_NAME}"; then
+    if ! docker ps --format '{{.Names}}' | grep -qx "${CONTAINER_NAME}"; then
+      docker start "${CONTAINER_NAME}"
     fi
-
-    # 檢查該 Docker image 是否已存在，若不存在則創建一個 image
-    # || 表示如果前面的命令失敗（返回非零退出狀態），則執行大括號內的命令。這裡的命令是打印一個錯誤消息並退出腳本（exit 1），以防構建失敗。
-    if [[ "$(docker images -q ${IMAGE_NAME})" == "" ]]; then
-        docker build \
-            --build-arg UID="$(id -u)" \
-            --build-arg GID="$(id -g)" \
-            --build-arg NAME="${NAME}" \
-            -t ${IMAGE_NAME} . ||
-            { echo "error due to docker build image" && exit 1; }
-    fi
-
-    # 此行檢查 Docker 容器是否已運行，若尚未運行則進入if的部分
-    if [[ "$(docker ps | grep ${CONTAINER_NAME})" == "" ]]; then
-        # 檢查主機系統是否支援 GPU，若支援則使用 --gpus all 參數來運行 Docker 容器
-        # 如果不支援則不使用 --gpus all 參數來運行 Docker 容器
-        if has_gpu; then
-            GPU_OPTION="--gpus all"
-        else
-            GPU_OPTION=""
-            echo "error: no GPU support, please check your docker installation"
-        fi
-
-        # 使用 docker run 命令來運行 Docker 容器，並將主機的 ${VOLUME_PROJECTS_DIR} 和 ${VOLUME_VSCODESERVER_DIR} 目錄掛載到容器中
-        docker run -d \
-            ${GPU_OPTION} \
-            -v "$([[ ${OSTYPE} == "msys" ]] && echo /"${VOLUME_PROJECTS_DIR}" || echo "${VOLUME_PROJECTS_DIR}")":/home/"${NAME}"/projects/ \
-            -v "$([[ ${OSTYPE} == "msys" ]] && echo /"${VOLUME_VSCODESERVER_DIR}" || echo "${VOLUME_VSCODESERVER_DIR}")":/home/"${NAME}"/.vscode-server/ \
-            -u "${NAME}" \
-            -h ${CONTAINER_NAME} \
-            --name ${CONTAINER_NAME} \
-            ${IMAGE_NAME} ||
-            { echo "error due to docker run image" && exit 1; }
-    fi
-
-    if [ "${OSTYPE}" == "msys" ]; then
-        winpty docker exec -it ${CONTAINER_NAME} bash
+  else
+    if has_gpu; then
+      GPU_OPTION="--gpus all"
     else
-        docker exec -it ${CONTAINER_NAME} bash
+      GPU_OPTION=""
+      echo "warn: no GPU runtime detected; starting without GPU (--gpus all not set)"
     fi
 
-    clear
-}
-
-stop_docker_container() {
-    if [[ "$(docker ps -a | grep ${CONTAINER_NAME})" != "" ]]; then
-        docker container rm -f ${CONTAINER_NAME}
-    fi
-}
-
-remove_docker_image() {
-    if [[ "$(docker images -q ${IMAGE_NAME})" != "" ]]; then
-        docker rmi ${IMAGE_NAME}
-    fi
-}
-
-export DOCKER_SCAN_SUGGEST=false
-
-[[ $(
-    docker ps >/dev/null 2>&1
-    echo $?
-) != 0 ]] && echo "error: please install and start Docker Engine first!!!" && exit 1
-
-case $1 in
---start)
-    start_environment
-    ;;
---stop)
-    stop_docker_container
-    ;;
---prune)
-    stop_docker_container
-    remove_docker_image
-    ;;
---rebuild)
-    stop_docker_container
-    remove_docker_image
-    start_environment
-    ;;
-*)
-    usage_message
-    ;;
-esac
+    docker run -d \
+      ${GPU_OPTION}_
