@@ -5,30 +5,12 @@ ARG GID=1000
 ARG NAME="user"
 ARG TZ="Asia/Taipei"
 
-ENV INSTALLATION_TOOLS apt-utils \
-        curl \
-        sudo \
-        software-properties-common
-
-ENV DEVELOPMENT_PACKAGES python3.8 \
-        python3-pip
-
-ENV TOOL_PACKAGES bash \
-        dos2unix \
-        git \
-        locales \
-        nano \
-        tree \
-        vim \
-        wget \
-        nvidia-container-toolkit \
-        openssh-server
-
-ENV LLM_TOOL_PACKAGES ffmpeg \
-        cargo
-
-ENV USER ${NAME}
-ENV TERM xterm-256color
+ENV INSTALLATION_TOOLS="apt-utils curl sudo software-properties-common"
+ENV DEVELOPMENT_PACKAGES="python3.8 python3-pip"
+ENV TOOL_PACKAGES="bash dos2unix git locales nano tree vim wget nvidia-container-toolkit openssh-server"
+ENV LLM_TOOL_PACKAGES="ffmpeg cargo"
+ENV USER=${NAME}
+ENV TERM=xterm-256color
 
 # install system packages
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y && \
@@ -101,7 +83,11 @@ RUN mkdir -p /home/${NAME}/.ssh && \
     chmod 600 /home/${NAME}/.ssh/authorized_keys && \
     chown -R ${UID}:${GID} /home/${NAME}/.ssh
 
-RUN sed -i '1iservice ssh start || true' /usr/start.sh
+RUN sed -i '1s/^\xEF\xBB\xBF//' /usr/start.sh && \
+    sed -i 's/\r$//' /usr/start.sh && \
+    awk 'NR==1{print; print "sudo service ssh start || true"; next}1' /usr/start.sh > /tmp/start.sh && \
+    mv /tmp/start.sh /usr/start.sh && \
+    chmod 755 /usr/start.sh
 
 EXPOSE 22
 
