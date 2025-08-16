@@ -17,8 +17,9 @@ VOLUME_VSCODESERVER_DIR="${PWD}/temp/.vscode-server/"
 REPO_DIR="${VOLUME_PROJECTS_DIR}/PodcastLLM"
 REPO_URL="https://github.com/Botang-Liao/PodcastLLM.git"
 
-# SSH port mapping (host:container)
-SSH_PORT="${SSH_PORT:-2222}"
+# Port mappings (host -> container)
+SSH_PORT="${SSH_PORT:-2222}"          # host -> container:22
+WEB_PORT="${WEB_PORT:-11434}"         # host -> container:11434
 
 usage_message() {
   cat <<EOF
@@ -32,6 +33,10 @@ usage_message() {
 
     Env:
       SSH_PORT   Host port to map to container's 22 (default: 2222)
+      WEB_PORT   Host port to map to container's 11434 (default: 11434)
+
+    Examples:
+      $ ./run.sh --start
 
 EOF
 }
@@ -74,6 +79,7 @@ start_environment() {
     docker run -d \
       ${GPU_OPTION} \
       -p "${SSH_PORT}:22" \
+      -p "${WEB_PORT}:11434" \
       -v "$([[ ${OSTYPE} == "msys" ]] && echo /"${VOLUME_PROJECTS_DIR}" || echo "${VOLUME_PROJECTS_DIR}")":/home/"${NAME}"/projects/ \
       -v "$([[ ${OSTYPE} == "msys" ]] && echo /"${VOLUME_VSCODESERVER_DIR}" || echo "${VOLUME_VSCODESERVER_DIR}")":/home/"${NAME}"/.vscode-server/ \
       -u "${NAME}" \
