@@ -88,7 +88,12 @@ RUN sed -i '1s/^\xEF\xBB\xBF//' /usr/start.sh && \
     mv /tmp/start.sh /usr/start.sh && \
     chmod 755 /usr/start.sh
 
-# ===== 開放埠 =====
+RUN GRADIO_DIR=$(python3 -c "import gradio, pathlib; print(pathlib.Path(gradio.__file__).parent)") \
+    && mkdir -p "$GRADIO_DIR" \
+    && curl -L -o "$GRADIO_DIR/frpc_linux_amd64_v0.2" \
+       https://cdn-media.huggingface.co/frpc-gradio-0.2/frpc_linux_amd64 \
+    && chmod +x "$GRADIO_DIR/frpc_linux_amd64_v0.2"
+
 EXPOSE 22
 EXPOSE 11434
 
