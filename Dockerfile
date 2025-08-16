@@ -12,7 +12,6 @@ ENV LLM_TOOL_PACKAGES="ffmpeg cargo"
 ENV USER=${NAME}
 ENV TERM=xterm-256color
 
-# install system packages
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y ${INSTALLATION_TOOLS} && \
     add-apt-repository ppa:git-core/ppa && \
@@ -23,21 +22,20 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update -y && \
     DEBIAN_FRONTEND=noninteractive apt-get upgrade -y && \
     DEBIAN_FRONTEND=noninteractive apt-get -y install ${DEVELOPMENT_PACKAGES} ${TOOL_PACKAGES} ${LLM_TOOL_PACKAGES}
 
-# Install nvidia driver packages (for nvidia-container-toolkit)
 RUN curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | apt-key add - && \
-    distribution=$(. /etc/os-release;echo $ID$VERSION_ID) && \
-    curl -s -L https://nvidia.github.io/nvidia-docker/${distribution}/nvidia-docker.list | tee /etc/apt/sources.list.d/nvidia-docker.list
+    bash -lc 'distribution=$(. /etc/os-release; echo $ID$VERSION_ID)' && \
+    bash -lc 'curl -s -L https://nvidia.github.io/nvidia-docker/${distribution}/nvidia-docker.list | tee /etc/apt/sources.list.d/nvidia-docker.list'
 
-RUN curl -fsSL https://ollama.com/download/OllamaInstall.sh | sh
+# 官方安裝腳本
+RUN curl -fsSL https://ollama.com/install.sh | sh
 
-# install python libraries
+ENV OLLAMA_MODELS=/opt/ollama
+RUN mkdir -p /opt/ollama && chown ${UID}:${GID} /opt/ollama
+
 COPY ./projects/PodcastLLM/requirements.txt /tmp/requirements.txt
 RUN pip3 install -r /tmp/requirements.txt
 
-# setup time zone
 RUN ln -snf /usr/share/zoneinfo/${TZ} /etc/localtime && echo ${TZ} > /etc/timezone
-
-# add support of locale zh_TW
 RUN sed -i 's/# en_US.UTF-8/en_US.UTF-8/g' /etc/locale.gen && \
     sed -i 's/# zh_TW.UTF-8/zh_TW.UTF-8/g' /etc/locale.gen && \
     sed -i 's/# zh_TW BIG5/zh_TW BIG5/g' /etc/locale.gen && \
@@ -47,20 +45,17 @@ RUN sed -i 's/# en_US.UTF-8/en_US.UTF-8/g' /etc/locale.gen && \
     update-locale LC_ALL=en_US.UTF-8
 ENV LC_ALL en_US.UTF-8
 
-# add non-root user account
 RUN groupadd -g ${GID} -o ${NAME} && \
     useradd -u ${UID} -m -s /bin/bash -g ${GID} ${NAME} && \
     echo "${NAME} ALL = NOPASSWD: ALL" > /etc/sudoers.d/${NAME} && \
     chmod 0440 /etc/sudoers.d/${NAME} && \
     passwd -d ${NAME}
 
-# sshd basic setup
 RUN mkdir -p /var/run/sshd && \
     sed -i 's/^#\?PasswordAuthentication .*/PasswordAuthentication no/' /etc/ssh/sshd_config && \
     sed -i 's/^#\?PermitRootLogin .*/PermitRootLogin no/' /etc/ssh/sshd_config && \
     sed -i 's@^#\?AuthorizedKeysFile .*@AuthorizedKeysFile %h/.ssh/authorized_keys@' /etc/ssh/sshd_config
 
-# copy scripts and set permissions
 COPY ./scripts/.bashrc /home/${NAME}/.bashrc
 COPY ./scripts/start.sh /usr/start.sh
 COPY ./scripts/startup /usr/local/bin/startup
@@ -71,7 +66,6 @@ RUN dos2unix -ic /home/${NAME}/.bashrc | xargs dos2unix && \
     chmod 755 /usr/start.sh && \
     chmod 755 /usr/local/bin/startup && \
     chown -R ${UID}:${GID} /home/${NAME}
-
 
 COPY ./ssh_keys/ /tmp/ssh-keys/
 RUN mkdir -p /home/${NAME}/.ssh && \
@@ -85,14 +79,22 @@ RUN mkdir -p /home/${NAME}/.ssh && \
 
 RUN sed -i '1s/^\xEF\xBB\xBF//' /usr/start.sh && \
     sed -i 's/\r$//' /usr/start.sh && \
-    awk 'NR==1{print; print "sudo service ssh start || true"; next}1' /usr/start.sh > /tmp/start.sh && \
+    awk 'NR==1{print; \
+               print "sudo service ssh start || true"; \
+               print "export OLLAMA_HOST=0.0.0.0:11434"; \
+               print "export OLLAMA_MODELS=/opt/ollama"; \
+               print "nohup ollama serve > /home/'"${NAME}"'/ollama.log 2>&1 &"; \
+               next}1' /usr/start.sh > /tmp/start.sh && \
     mv /tmp/start.sh /usr/start.sh && \
     chmod 755 /usr/start.sh
 
-EXPOSE 22
-
+# ===== 先以「目標使用者」把模型拉進共用目錄 =====
 USER ${NAME}
+RUN OLLAMA_MODELS=/opt/ollama ollama pull deepseek-r1:14b
+
+# ===== 開放埠 =====
+EXPOSE 22
+EXPOSE 11434
 
 WORKDIR /home/${NAME}
-
 CMD [ "/usr/start.sh" ]
