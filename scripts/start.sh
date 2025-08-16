@@ -42,6 +42,28 @@ python3 -m pip install \
 echo "⬇️ 安裝 sentence-transformers..."
 python3 -m pip install "sentence-transformers>=2.6.1,<3.0.0"
 
+# === 啟動並設定 OLLAMA ===
+export OLLAMA_HOST=0.0.0.0:11434
+# 如需固定共用路徑，取消下一行註解（要與 Dockerfile 中目錄/權限一致）
+export OLLAMA_MODELS=/opt/ollama
+
+# 背景啟動 daemon
+nohup ollama serve > /home/"$(id -un)"/ollama.log 2>&1 &
+
+# 等待服務就緒（最多 60 秒）
+for i in $(seq 1 60); do
+  if curl -fsS "http://127.0.0.1:11434/api/tags" >/dev/null; then
+    echo "✅ ollama 就緒"
+    break
+  fi
+  sleep 1
+done
+
+# （可選）第一次啟動時預拉模型；失敗不阻斷容器啟動
+if [[ "${PREPULL_MODELS:-1}" == "1" ]]; then
+  ollama pull deepseek-r1:14b || echo "⚠️ 預拉模型失敗，之後可手動 docker exec 再拉"
+fi
+
 # 準備資料夾並設定權限
 mkdir -p "/home/$(id -un)/.vscode-server" "/home/$(id -un)/projects"
 sudo chown "$(id -u)":"$(id -g)" /home/"$(id -un)"/.vscode-server && chmod 755 /home/"$(id -un)"/.vscode-server
