@@ -90,7 +90,7 @@ RUN sed -i '1s/^\xEF\xBB\xBF//' /usr/start.sh && \
 
 # ===== 先以「目標使用者」把模型拉進共用目錄 =====
 USER ${NAME}
-RUN  ollama pull deepseek-r1:14b
+RUN ollama pull deepseek-r1:14b
 
 # ===== 開放埠 =====
 EXPOSE 22
