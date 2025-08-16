@@ -89,10 +89,8 @@ RUN sed -i '1s/^\xEF\xBB\xBF//' /usr/start.sh && \
     chmod 755 /usr/start.sh
 
 # ===== 先以「目標使用者」把模型拉進共用目錄 =====
-USER root
-RUN mkdir -p /opt/ollama && chown -R ${NAME}:${NAME} /opt/ollama
 USER ${NAME}
-RUN OLLAMA_MODELS=/opt/ollama ollama pull deepseek-r1:14b
+RUN  ollama pull deepseek-r1:14b
 
 # ===== 開放埠 =====
 EXPOSE 22
